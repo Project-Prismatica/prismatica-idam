@@ -26,7 +26,7 @@ func populateProgramArguments() (args programArguments) {
 
 	flag.StringVar(&args.Bind,
 		"bind",
-		"[::]:8080",
+		"127.0.0.1:8080",
 		"port for core to bind the auth service",
 	)
 

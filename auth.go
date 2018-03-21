@@ -3,54 +3,64 @@ package prismatica_idam
 
 import (
 	"net/http"
+	"time"
 
-	"github.com/labstack/echo"
+	"github.com/gorilla/mux"
+	"github.com/gorilla/sessions"
 	log "github.com/sirupsen/logrus"
 )
 
 const (
-	authCookieName = "prismatica-auth-session"
+	sessionsName = "prismatica-auth-session"
 )
 
-func generateAuthCookie()(cookie *http.Cookie) {
-	cookie = &http.Cookie{Name: authCookieName,
-		Value: "null-authentication"}
-	return
-}
+var (
+	// TODO: dynamically generate this
+	sessionStore = sessions.NewCookieStore([]byte("initial-secret-key"))
+)
 
-func nullAuthenticationHandler(c echo.Context)(err error) {
-	log.WithFields(log.Fields{"path": c.Path(), "client": c.RealIP()}).
+func nullAuthenticationHandler(w http.ResponseWriter, r *http.Request) {
+	log.WithFields(log.Fields{"path": r.URL, "client": r.RequestURI}).
 		Info("handling with null authentication")
 
-	authCookie, authCookieFetchError := c.Request().Cookie(authCookieName)
-	if authCookieFetchError != nil {
-		log.WithFields(log.Fields{"authCookieFetchError": authCookieFetchError,
-			}).Debug("did not find cookie")
-		authCookie = generateAuthCookie()
-		c.SetCookie(authCookie)
+	session, err := sessionStore.Get(r, sessionsName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	err = c.String(http.StatusOK, "")
+	session.Save(r, w)
 
-	log.WithFields(log.Fields{"auth_cookie": authCookie}).
+	w.WriteHeader(http.StatusOK)
+	log.WithFields(log.Fields{"session": session}).
 		Info("client authorized")
 
-	return
 }
 
 func RunAmbassadorAuthenticationService(bindSpec string) (err error) {
 
-	httpServer := echo.New()
+	router := mux.NewRouter()
 
-	httpServer.Any("/", nullAuthenticationHandler)
+	httpServer := &http.Server{
+		Handler: 		router,
+		Addr:			bindSpec,
+		WriteTimeout: 	15 * time.Second,
+		ReadTimeout: 	15 * time.Second,
+	}
+
+
+	router.MatcherFunc(func(r *http.Request, m *mux.RouteMatch) bool {return true}).
+		HandlerFunc(nullAuthenticationHandler)
 
 	log.WithFields(log.Fields{"bind": bindSpec}).
 		Debug("starting http server")
-	serverRunError := httpServer.Start(bindSpec)
+	serverRunError := httpServer.ListenAndServe()
 	if serverRunError != nil {
 		log.WithFields(log.Fields{"error": serverRunError}).
 			Error("could not run server")
 	}
+
+	httpServer.Close()
 
 	return
 }
