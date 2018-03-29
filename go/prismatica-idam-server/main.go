@@ -60,6 +60,7 @@ func configureLogging() {
 func main() {
 	configureLogging()
 
+
 	log.Info("idam server starting")
 
 	prismatica_idam.RunAmbassadorAuthenticationService(runtimeArguments.Bind)
